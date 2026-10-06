@@ -3,6 +3,7 @@
 #include "settings.h"
 #include "focus_sync.h"
 #include "http_server.h"
+#include "ws_server.h"
 #include "options_frame.h"
 
 class HttpControlPlugin : public IAIMPPlugin, public IAIMPOptionsDialogFrame {
@@ -62,7 +63,10 @@ public:
             static_cast<IAIMPOptionsDialogFrame*>(this));
 
         InitFocusSync();
-        g_serverThread = std::thread(RunHttpServer);
+        if (g_serverMode == 1)
+            g_serverThread = std::thread(RunWsServer);
+        else
+            g_serverThread = std::thread(RunHttpServer);
         g_serverThread.detach();
         return S_OK;
     }

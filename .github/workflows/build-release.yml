@@ -1,0 +1,54 @@
+name: Build & Release
+
+# Сборка x64 + x32 и упаковка .aimppack.
+# Пуш любого тега создаёт GitHub Release с готовыми файлами.
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+
+# Нужно для создания релиза встроенным GITHUB_TOKEN
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build x64 / x32
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++-mingw-w64-x86-64 g++-mingw-w64-i686 zip
+
+      # build_package.sh — единственный источник правды для флагов сборки,
+      # структуры .aimppack и конвертации Langs в CP1251.
+      - name: Build and package
+        run: bash build_package.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aimp-http-control
+          path: |
+            AimpHttpControl64.dll
+            AimpHttpControl32.dll
+            AimpHttpControl.aimppack
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            AimpHttpControl64.dll
+            AimpHttpControl32.dll
+            AimpHttpControl.aimppack
+          generate_release_notes: true
+          fail_on_unmatched_files: true

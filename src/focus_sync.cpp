@@ -1,5 +1,33 @@
 #include "focus_sync.h"
 #include "globals.h"
+#include "ws_server.h"
+#include "player_api.h"
+
+// Разослать текущий статус плеера WS-клиентам (если включён WS-режим)
+static void BroadcastPlayerState(const std::string& event) {
+    if (g_serverMode != 1) return;
+    json status = GetPlayerStatus();
+    status["event"] = event;
+    WsBroadcast(status.dump());
+}
+
+// Лёгкий broadcast только позиции — вызывается каждую секунду, не трогает треки/плейлисты
+static void BroadcastPosition() {
+    if (g_serverMode != 1) return;
+    if (!g_core) return;
+    IAIMPServicePlayer* p = nullptr;
+    if (g_core->QueryInterface(IID_IAIMPServicePlayer, (void**)&p) != S_OK || !p) return;
+    double pos = 0, dur = 0;
+    p->GetPosition(&pos);
+    p->GetDuration(&dur);
+    p->Release();
+    json msg;
+    msg["event"]    = "position";
+    msg["position"] = pos;
+    msg["duration"] = dur;
+    msg["remaining"] = dur > 0 ? (dur - pos) : 0.0;
+    WsBroadcast(msg.dump());
+}
 
 // ==========================================
 // RunInMainThread
@@ -93,6 +121,53 @@ struct PlaylistListenerEntry {
 static std::vector<PlaylistListenerEntry> s_playlistListeners;
 static std::mutex                         s_listenersMutex;
 static class AIMPPlaylistManagerListener* s_managerListener = nullptr;
+static class AIMPMessageHookImpl*         s_messageHook     = nullptr;
+
+// ==========================================
+// IAIMPMessageHook — хук событий плеера
+// ==========================================
+class AIMPMessageHookImpl : public IAIMPMessageHook {
+    LONG ref_ = 1;
+public:
+    HRESULT WINAPI QueryInterface(REFIID riid, void** ppv) override {
+        if (!ppv) return E_POINTER;
+        if (riid == IID_IUnknown || riid == IID_IAIMPMessageHook) {
+            *ppv = static_cast<IAIMPMessageHook*>(this); AddRef(); return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+    ULONG WINAPI AddRef()  override { return InterlockedIncrement(&ref_); }
+    ULONG WINAPI Release() override {
+        LONG r = InterlockedDecrement(&ref_);
+        if (r == 0) delete this;
+        return r;
+    }
+
+    void WINAPI CoreMessage(LongWord AMessage, int /*AParam1*/, void* /*AParam2*/, HRESULT* /*AResult*/) override {
+        switch (AMessage) {
+            case AIMP_MSG_EVENT_PLAYER_STATE:
+                BroadcastPlayerState("player_state_changed");
+                break;
+            case AIMP_MSG_EVENT_STREAM_START:
+            case AIMP_MSG_EVENT_STREAM_START_SUBTRACK:
+            case AIMP_MSG_EVENT_PLAYING_FILE_INFO:
+                BroadcastPlayerState("track_changed");
+                break;
+            case AIMP_MSG_EVENT_STREAM_END:
+                BroadcastPlayerState("playback_ended");
+                break;
+            case AIMP_MSG_EVENT_PROPERTY_VALUE:
+                BroadcastPlayerState("property_changed");
+                break;
+            case AIMP_MSG_EVENT_PLAYER_UPDATE_POSITION:
+            case AIMP_MSG_EVENT_PLAYER_UPDATE_POSITION_HR:
+                BroadcastPosition();
+                break;
+            default:
+                break;
+        }
+    }
+};
 
 class AIMPPlaylistListener : public IAIMPPlaylistListener {
     LONG ref_ = 1;
@@ -120,9 +195,12 @@ public:
         int idx = FindPlaylistIndex(playlist_);
         if (idx >= 0) {
             int focusIdx = GetFocusedIndex(playlist_);
-            std::lock_guard<std::mutex> lk(g_focusMutex);
-            g_focusPlaylistIdx = idx;
-            g_focusTrackIdx    = (focusIdx >= 0) ? focusIdx : 0;
+            {
+                std::lock_guard<std::mutex> lk(g_focusMutex);
+                g_focusPlaylistIdx = idx;
+                g_focusTrackIdx    = (focusIdx >= 0) ? focusIdx : 0;
+            }
+            BroadcastPlayerState("focus_changed");
         }
     }
 
@@ -132,9 +210,12 @@ public:
             if (plIdx < 0) return;
             int focusIdx = GetFocusedIndex(playlist_);
             if (focusIdx < 0) return;
-            std::lock_guard<std::mutex> lk(g_focusMutex);
-            if (g_focusPlaylistIdx == plIdx)
-                g_focusTrackIdx = focusIdx;
+            {
+                std::lock_guard<std::mutex> lk(g_focusMutex);
+                if (g_focusPlaylistIdx == plIdx)
+                    g_focusTrackIdx = focusIdx;
+            }
+            BroadcastPlayerState("focus_changed");
         }
     }
 
@@ -215,9 +296,12 @@ public:
         int idx = FindPlaylistIndex(Playlist);
         if (idx >= 0) {
             int focusIdx = GetFocusedIndex(Playlist);
-            std::lock_guard<std::mutex> lk(g_focusMutex);
-            g_focusPlaylistIdx = idx;
-            g_focusTrackIdx    = (focusIdx >= 0) ? focusIdx : 0;
+            {
+                std::lock_guard<std::mutex> lk(g_focusMutex);
+                g_focusPlaylistIdx = idx;
+                g_focusTrackIdx    = (focusIdx >= 0) ? focusIdx : 0;
+            }
+            BroadcastPlayerState("focus_changed");
         }
     }
     void WINAPI PlaylistAdded(IAIMPPlaylist* Playlist) override {
@@ -231,6 +315,15 @@ void InitFocusSync() {
     s_managerListener = new AIMPPlaylistManagerListener();
     s_managerListener->AddRef();
     g_core->RegisterExtension(IID_IAIMPServicePlaylistManager, s_managerListener);
+
+    // Регистрируем хук сообщений для событий плеера (WS broadcast)
+    IAIMPServiceMessageDispatcher* disp = nullptr;
+    if (g_core->QueryInterface(IID_IAIMPServiceMessageDispatcher, (void**)&disp) == S_OK && disp) {
+        s_messageHook = new AIMPMessageHookImpl();
+        s_messageHook->AddRef();
+        disp->Hook(s_messageHook);
+        disp->Release();
+    }
 
     RunInMainThread([&]() {
         AttachListenerToAllPlaylists();
@@ -253,6 +346,16 @@ void InitFocusSync() {
 }
 
 void FinalizeFocusSync() {
+    // Снимаем хук сообщений
+    if (g_core && s_messageHook) {
+        IAIMPServiceMessageDispatcher* disp = nullptr;
+        if (g_core->QueryInterface(IID_IAIMPServiceMessageDispatcher, (void**)&disp) == S_OK && disp) {
+            disp->Unhook(s_messageHook);
+            disp->Release();
+        }
+    }
+    if (s_messageHook) { s_messageHook->Release(); s_messageHook = nullptr; }
+
     DetachAllPlaylistListeners();
     if (g_core && s_managerListener)
         g_core->UnregisterExtension(s_managerListener);

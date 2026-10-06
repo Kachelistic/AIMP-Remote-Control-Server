@@ -5,6 +5,7 @@ OptionsPageName=HTTP Remote Control
 GrpServer=Server
 LblPort=Port:
 LblInterface=Listen interface:
+LblMode=Server mode:
 GrpAccess=Access policy
 ChkAllowOnly=Allow access only from:
 LblAllowList=IP / CIDR list:

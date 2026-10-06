@@ -5,6 +5,7 @@ OptionsPageName=HTTP Remote Control
 GrpServer=Сервер
 LblPort=Порт:
 LblInterface=Сетевой интерфейс:
+LblMode=Режим сервера:
 GrpAccess=Политика доступа
 ChkAllowOnly=Разрешить подключение только с:
 LblAllowList=Список IP / CIDR:

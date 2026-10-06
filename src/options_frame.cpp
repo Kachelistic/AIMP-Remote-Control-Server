@@ -3,6 +3,7 @@
 #include "network.h"
 #include "settings.h"
 #include "http_server.h"
+#include "ws_server.h"
 #include "utils.h"
 #include "../sdk/apiGUI.h"
 #include "../sdk/apiMUI.h"
@@ -15,6 +16,7 @@ static int          s_bindMode     = 1;
 static std::wstring s_bindIp       = L"";
 static bool         s_allowEnabled = false;
 static std::string  s_allowList    = "";
+static int          s_serverMode   = 0;  // 0 = HTTP, 1 = WebSocket
 
 static std::vector<NetworkInterface> s_interfaces;
 
@@ -26,11 +28,15 @@ static IAIMPUIBaseEdit*     s_allowEdit   = nullptr;
 static IAIMPUILabel*        s_allowLbl    = nullptr;
 static IAIMPUILabel*        s_statusLbl   = nullptr;
 static IAIMPUIPanel*        s_rowAllow    = nullptr;
+// Выбор режима HTTP/WS
+static IAIMPUICheckBox*     s_radioHttp   = nullptr;  // RadioBox "HTTP"
+static IAIMPUICheckBox*     s_radioWs     = nullptr;  // RadioBox "WebSocket"
 // Локализуемые контролы
 static IAIMPUIGroupBox*     s_grpServer   = nullptr;
 static IAIMPUIGroupBox*     s_grpAccess   = nullptr;
 static IAIMPUILabel*        s_lblPort     = nullptr;
 static IAIMPUILabel*        s_lblIface    = nullptr;
+static IAIMPUILabel*        s_lblMode     = nullptr;  // "Server mode:"
 static IAIMPUILabel*        s_lblDesc     = nullptr;  // описание внизу
 static IAIMPUILabel*        s_lblNote     = nullptr;  // примечание внизу
 
@@ -171,6 +177,7 @@ static void ApplyLocalization() {
     // Labels
     if (s_lblPort)    SetLabelText(s_lblPort,  MUIGet(L"AimpHttpControl.Options\\LblPort",      L"Port:"));
     if (s_lblIface)   SetLabelText(s_lblIface,  MUIGet(L"AimpHttpControl.Options\\LblInterface", L"Listen interface:"));
+    if (s_lblMode)    SetLabelText(s_lblMode,   MUIGet(L"AimpHttpControl.Options\\LblMode",      L"Server mode:"));
     if (s_allowLbl)   SetLabelText(s_allowLbl,  MUIGet(L"AimpHttpControl.Options\\LblAllowList", L"IP / CIDR list:"));
     // Checkbox
     if (s_allowCheck) {
@@ -239,15 +246,22 @@ static void ApplySettings() {
     s_allowEnabled = GetCheckState(s_allowCheck);
     s_allowList    = WStrToUtf8(GetEditText(s_allowEdit));
 
-    bool needRestart = (s_port != g_port || s_bindMode != g_bindMode || s_bindIp != g_bindIp);
+    // Режим сервера: читаем из RadioBox
+    if (s_radioHttp && GetCheckState(s_radioHttp)) s_serverMode = 0;
+    if (s_radioWs   && GetCheckState(s_radioWs))   s_serverMode = 1;
+
+    bool needRestart = (s_port != g_port || s_bindMode != g_bindMode || s_bindIp != g_bindIp
+                        || s_serverMode != g_serverMode);
     g_port = s_port; g_bindMode = s_bindMode; g_bindIp = s_bindIp;
     g_allowListEnabled = s_allowEnabled; g_allowList = s_allowList;
+    g_serverMode = s_serverMode;
     SaveSettings();
-    if (needRestart) RestartHttpServer();
+    if (needRestart) RestartServer();
 
     const wchar_t* bstr = (g_bindMode == 0) ? L"127.0.0.1"
         : (g_bindMode == 2 && !g_bindIp.empty()) ? g_bindIp.c_str() : L"0.0.0.0";
-    wchar_t buf[128]; wsprintfW(buf, L"Server: %s:%d", bstr, g_port);
+    const wchar_t* modeStr = (g_serverMode == 1) ? L"WS" : L"HTTP";
+    wchar_t buf[128]; wsprintfW(buf, L"%s: %s:%d", modeStr, bstr, g_port);
     SetLabelText(s_statusLbl, buf);
 }
 
@@ -288,6 +302,7 @@ HWND WINAPI HttpControlOptionsFrame::CreateFrame(HWND parentWnd) {
 
     s_port = g_port; s_bindMode = g_bindMode; s_bindIp = g_bindIp;
     s_allowEnabled = g_allowListEnabled; s_allowList = g_allowList;
+    s_serverMode   = g_serverMode;
     s_interfaces   = EnumNetworkInterfaces();
 
     // --- Форма ---
@@ -360,13 +375,50 @@ HWND WINAPI HttpControlOptionsFrame::CreateFrame(HWND parentWnd) {
             }
         }
 
+        // Строка: выбор режима HTTP / WebSocket
+        IAIMPUIPanel* rowMode = CreateCtrl<IAIMPUIPanel>(ui, s_form, grpServer, L"rowMode", nullptr, IID_IAIMPUIPanel);
+        if (rowMode) {
+            SetAlignTop(rowMode, 28, 4);
+            rowMode->SetValueAsInt32(AIMPUI_PANEL_PROPID_BORDERS, AIMPUI_FLAGS_BORDERS_NONE);
+
+            s_lblMode = CreateCtrl<IAIMPUILabel>(ui, s_form, rowMode, L"lblMode", nullptr, IID_IAIMPUILabel);
+            if (s_lblMode) {
+                TAIMPUIControlPlacement p = {}; p.Alignment = ualLeft; p.Bounds.right = 130;
+                s_lblMode->SetPlacement(p);
+                SetLabelText(s_lblMode, L"Server mode:");
+            }
+
+            // RadioBox "HTTP"
+            s_radioHttp = CreateCtrl<IAIMPUICheckBox>(ui, s_form, rowMode, L"radioHttp", ev, IID_IAIMPUIRadioBox);
+            if (s_radioHttp) {
+                TAIMPUIControlPlacement p = {}; p.Alignment = ualLeft; p.Bounds.right = 80;
+                s_radioHttp->SetPlacement(p);
+                s_radioHttp->SetValueAsInt32(AIMPUI_CHECKBOX_PROPID_AUTOSIZE, 0);
+                IAIMPString* cap = MakeStr(L"HTTP");
+                s_radioHttp->SetValueAsObject(AIMPUI_CHECKBOX_PROPID_CAPTION, cap); cap->Release();
+                SetCheckState(s_radioHttp, s_serverMode == 0);
+            }
+
+            // RadioBox "WebSocket"
+            s_radioWs = CreateCtrl<IAIMPUICheckBox>(ui, s_form, rowMode, L"radioWs", ev, IID_IAIMPUIRadioBox);
+            if (s_radioWs) {
+                TAIMPUIControlPlacement p = {}; p.Alignment = ualClient;
+                s_radioWs->SetPlacement(p);
+                s_radioWs->SetValueAsInt32(AIMPUI_CHECKBOX_PROPID_AUTOSIZE, 0);
+                IAIMPString* cap = MakeStr(L"WebSocket");
+                s_radioWs->SetValueAsObject(AIMPUI_CHECKBOX_PROPID_CAPTION, cap); cap->Release();
+                SetCheckState(s_radioWs, s_serverMode == 1);
+            }
+        }
+
         // Строка: статус сервера
         s_statusLbl = CreateCtrl<IAIMPUILabel>(ui, s_form, grpServer, L"statusLbl", nullptr, IID_IAIMPUILabel);
         if (s_statusLbl) {
             SetAlignTop(s_statusLbl, 20, 4);
             const wchar_t* bstr = (g_bindMode == 0) ? L"127.0.0.1"
                 : (g_bindMode == 2 && !g_bindIp.empty()) ? g_bindIp.c_str() : L"0.0.0.0";
-            wchar_t buf[128]; wsprintfW(buf, L"Server: %s:%d", bstr, g_port);
+            const wchar_t* modeStr = (g_serverMode == 1) ? L"WS" : L"HTTP";
+            wchar_t buf[128]; wsprintfW(buf, L"%s: %s:%d", modeStr, bstr, g_port);
             SetLabelText(s_statusLbl, buf);
         }
 
@@ -448,10 +500,13 @@ void WINAPI HttpControlOptionsFrame::DestroyFrame() {
     s_allowEdit  = nullptr;
     s_allowLbl   = nullptr;
     s_statusLbl  = nullptr;
+    s_radioHttp  = nullptr;
+    s_radioWs    = nullptr;
     s_grpServer  = nullptr;
     s_grpAccess  = nullptr;
     s_lblPort    = nullptr;
     s_lblIface   = nullptr;
+    s_lblMode    = nullptr;
     s_lblDesc    = nullptr;
     s_lblNote    = nullptr;
     // Форму освобождаем через IAIMPUIForm::Release(BOOL) — как в официальном демо SDK.
@@ -468,6 +523,7 @@ void WINAPI HttpControlOptionsFrame::Notification(int id) {
     case AIMP_SERVICE_OPTIONSDIALOG_NOTIFICATION_LOAD:
         s_port = g_port; s_bindMode = g_bindMode; s_bindIp = g_bindIp;
         s_allowEnabled = g_allowListEnabled; s_allowList = g_allowList;
+        s_serverMode = g_serverMode;
         if (s_portEdit) { wchar_t b[16]; wsprintfW(b, L"%d", s_port); SetEditText(s_portEdit, b); }
         if (s_bindCombo) {
             if (s_bindMode == 0)      SetComboIndex(s_bindCombo, 0);
@@ -478,6 +534,8 @@ void WINAPI HttpControlOptionsFrame::Notification(int id) {
         }
         if (s_allowCheck) SetCheckState(s_allowCheck, s_allowEnabled);
         if (s_allowEdit)  SetEditText(s_allowEdit, Utf8ToWStr(s_allowList));
+        if (s_radioHttp)  SetCheckState(s_radioHttp, s_serverMode == 0);
+        if (s_radioWs)    SetCheckState(s_radioWs,   s_serverMode == 1);
         break;
 
     case AIMP_SERVICE_OPTIONSDIALOG_NOTIFICATION_SAVE:
@@ -489,7 +547,9 @@ void WINAPI HttpControlOptionsFrame::Notification(int id) {
         if (s_bindCombo)  SetComboIndex(s_bindCombo, 1);
         if (s_allowCheck) SetCheckState(s_allowCheck, false);
         if (s_allowEdit)  SetEditText(s_allowEdit, L"");
-        s_port = 19122; s_bindMode = 1; s_bindIp = L""; s_allowEnabled = false;
+        if (s_radioHttp)  SetCheckState(s_radioHttp, true);
+        if (s_radioWs)    SetCheckState(s_radioWs,   false);
+        s_port = 19122; s_bindMode = 1; s_bindIp = L""; s_allowEnabled = false; s_serverMode = 0;
         if (svcOpts_) svcOpts_->FrameModified(this);
         break;
     }

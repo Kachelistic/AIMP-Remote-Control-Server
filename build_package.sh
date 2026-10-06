@@ -12,7 +12,7 @@ BUILD_FLAGS="-std=c++17 -O2 -Wall \
     -D_WIN32_WINNT=0x0A00 \
     -Isrc -isystem sdk -isystem third_party \
     src/globals.cpp src/utils.cpp src/network.cpp src/focus_sync.cpp \
-    src/settings.cpp src/player_api.cpp src/http_server.cpp \
+    src/settings.cpp src/player_api.cpp src/http_server.cpp src/ws_server.cpp \
     src/options_frame.cpp src/plugin.cpp"
 
 LINK_FLAGS="-lws2_32 -liphlpapi -luuid -lkernel32 -luser32 -lgdi32 \

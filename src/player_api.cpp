@@ -4,6 +4,73 @@
 #include "utils.h"
 
 // ==========================================
+// PlayerPlay — resume если paused, иначе ищем оранжевый трек (PLAYINGINDEX)
+// в активном плейлисте и запускаем через Play2
+// ==========================================
+void PlayerPlay() {
+    if (!g_core) return;
+    IAIMPServicePlayer* player = nullptr;
+    if (g_core->QueryInterface(IID_IAIMPServicePlayer, (void**)&player) != S_OK || !player) return;
+
+    int state = player->GetState();
+
+    if (state == AIMP_PLAYER_STATE_PAUSED) {
+        // Просто снимаем с паузы
+        player->Resume();
+        player->Release();
+        return;
+    }
+
+    if (state == AIMP_PLAYER_STATE_PLAYING) {
+        // Уже играет — ничего не делаем
+        player->Release();
+        return;
+    }
+
+    // Stopped — ищем оранжевый трек (PLAYINGINDEX) в активном плейлисте
+    RunInMainThread([&]() {
+        IAIMPServicePlaylistManager* mgr = nullptr;
+        if (g_core->QueryInterface(IID_IAIMPServicePlaylistManager, (void**)&mgr) != S_OK || !mgr) {
+            // fallback: просто Resume
+            player->Resume();
+            return;
+        }
+
+        IAIMPPlaylist* pl = nullptr;
+        mgr->GetActivePlaylist(&pl);
+
+        if (pl) {
+            int playingIdx = GetPlayingIndex(pl);
+            if (playingIdx >= 0) {
+                // Есть оранжевый трек — запускаем его
+                IAIMPPlaylistItem* item = nullptr;
+                if (pl->GetItem(playingIdx, IID_IAIMPPlaylistItem, (void**)&item) == S_OK && item) {
+                    player->Play2(item);
+                    item->Release();
+                    pl->Release();
+                    mgr->Release();
+                    return;
+                }
+            }
+            pl->Release();
+        }
+
+        // Оранжевого трека нет — запускаем активный плейлист с начала
+        IAIMPPlaylist* activePl = nullptr;
+        mgr->GetActivePlaylist(&activePl);
+        if (activePl) {
+            player->Play3(activePl);
+            activePl->Release();
+        } else {
+            player->Resume(); // последний fallback
+        }
+        mgr->Release();
+    });
+
+    player->Release();
+}
+
+// ==========================================
 // Message API helpers
 // ==========================================
 bool MsgGetBool(int propertyId) {

@@ -32,6 +32,9 @@ void LoadSettings() {
     wchar_t alBuf[1024] = {};
     GetPrivateProfileStringW(L"Access", L"AllowList", L"", alBuf, 1024, ini.c_str());
     g_allowList = WStrToUtf8(std::wstring(alBuf));
+
+    g_serverMode = GetPrivateProfileIntW(L"Server", L"Mode", 0, ini.c_str());
+    if (g_serverMode < 0 || g_serverMode > 1) g_serverMode = 0;
 }
 
 void SaveSettings() {
@@ -48,4 +51,8 @@ void SaveSettings() {
     std::wstring alW = Utf8ToWStr(g_allowList);
     WritePrivateProfileStringW(L"Access", L"AllowList",
         alW.empty() ? L"" : alW.c_str(), ini.c_str());
+
+    wchar_t modeBuf[4];
+    wsprintfW(modeBuf, L"%d", g_serverMode);
+    WritePrivateProfileStringW(L"Server", L"Mode", modeBuf, ini.c_str());
 }

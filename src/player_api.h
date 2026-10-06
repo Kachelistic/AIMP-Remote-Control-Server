@@ -16,6 +16,10 @@ void        GetFileInfo(IAIMPPlaylistItem* item, json& out);
 bool FillPlaylistJson(IAIMPServicePlaylistManager* mgr, int idx, json& out);
 bool FillTrackJson(IAIMPServicePlaylistManager* mgr, int plIdx, int trackIdx, json& out);
 
+// Воспроизвести: resume если paused, иначе найти оранжевый трек и Play2
+// Используется в /api/player/play и WS action player/play
+void PlayerPlay();
+
 // REST API responses
 json GetPlayerStatus();
 json FocusPlaylistShift(int delta);

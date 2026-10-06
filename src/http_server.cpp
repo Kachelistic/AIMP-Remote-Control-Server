@@ -3,6 +3,7 @@
 #include "network.h"
 #include "player_api.h"
 #include "focus_sync.h"
+#include "ws_server.h"
 
 HttpRequest ParseRequest(const std::string& raw) {
     HttpRequest req;
@@ -96,8 +97,7 @@ void RunHttpServer() {
                 rsp = GetPlayerStatus();
             }
             else if (req.path == "/api/player/play" && req.method == "POST") {
-                IAIMPServicePlayer* p = nullptr;
-                if (g_core && g_core->QueryInterface(IID_IAIMPServicePlayer,(void**)&p)==S_OK && p) { p->Resume(); rsp["state"]="playing"; p->Release(); }
+                PlayerPlay(); rsp["state"] = "playing";
             }
             else if (req.path == "/api/player/pause" && req.method == "POST") {
                 IAIMPServicePlayer* p = nullptr;
@@ -254,12 +254,5 @@ void RunHttpServer() {
 }
 
 void RestartHttpServer() {
-    g_running = false;
-    if (g_serverSocket != INVALID_SOCKET) {
-        closesocket(g_serverSocket);
-        g_serverSocket = INVALID_SOCKET;
-    }
-    Sleep(300);
-    g_serverThread = std::thread(RunHttpServer);
-    g_serverThread.detach();
+    RestartServer();
 }

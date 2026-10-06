@@ -9,6 +9,7 @@ std::wstring g_bindIp  = L"";
 bool       g_running   = false;
 std::thread g_serverThread;
 SOCKET     g_serverSocket = INVALID_SOCKET;
+int        g_serverMode = 0;  // 0 = HTTP, 1 = WebSocket
 
 bool        g_allowListEnabled = false;
 std::string g_allowList        = "";

@@ -7,7 +7,7 @@ extern HINSTANCE  g_hInstance;
 // AIMP core
 extern IAIMPCore* g_core;
 
-// HTTP сервер
+// HTTP/WS сервер
 extern std::mutex g_mutex;
 extern int        g_port;
 // Bind mode: 0 = 127.0.0.1, 1 = 0.0.0.0, 2 = конкретный IP (g_bindIp)
@@ -16,6 +16,8 @@ extern std::wstring g_bindIp;
 extern bool       g_running;
 extern std::thread g_serverThread;
 extern SOCKET     g_serverSocket;
+// Server mode: 0 = HTTP, 1 = WebSocket
+extern int        g_serverMode;
 
 // Политика доступа
 extern bool        g_allowListEnabled;
