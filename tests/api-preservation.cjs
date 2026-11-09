@@ -5,6 +5,8 @@ const vm = require('node:vm');
 const base = 'b42fccd65c964535fcfbdcc760967ccb27b48bf4';
 const git = (...args)=>cp.execFileSync('git',['-c','safe.directory='+process.cwd().replaceAll('\\','/'),...args],{encoding:'utf8'}).replaceAll('\r\n','\n');
 const original=git('show',base+':src/http_server.cpp');
+fs.mkdirSync('build',{recursive:true});
+fs.writeFileSync('build/http-original.cpp',original);
 const current=fs.readFileSync('src/http_server.cpp','utf8').replaceAll('\r\n','\n');
 const restored=current.replace('#include "pocket_web.h"\n','').replace(/            \/\/ AIMP_POCKET_BEGIN[\s\S]*?            \/\/ AIMP_POCKET_END\n/,'');
 assert.equal(restored,original,'Existing HTTP parser, responses and API handlers must remain unchanged');

@@ -10,7 +10,7 @@ libs=(-lws2_32 -liphlpapi -luuid -lkernel32 -luser32 -lgdi32 -static -static-lib
 /mingw64/bin/g++ "${flags[@]}" "${sources[@]}" -shared -o build/AimpHttpControl64.dll "${libs[@]}"
 PATH="/mingw32/bin:$PATH" /mingw32/bin/g++ "${flags[@]}" "${sources[@]}" src/plugin.def -shared -o build/AimpHttpControl32.dll "${libs[@]}"
 /mingw64/bin/g++ "${flags[@]}" "${sources[@]}" tests/http-harness.cpp -o build/http-pocket.exe "${libs[@]}"
-git show b42fccd65c964535fcfbdcc760967ccb27b48bf4:src/http_server.cpp > build/http-original.cpp
+test -s build/http-original.cpp
 original=()
 for source in "${sources[@]}"; do
  if [[ "$source" == src/http_server.cpp ]]; then original+=(build/http-original.cpp); else original+=("$source"); fi
