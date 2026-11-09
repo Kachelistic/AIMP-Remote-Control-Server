@@ -1,4 +1,5 @@
 #include "http_server.h"
+#include "pocket_web.h"
 #include "globals.h"
 #include "network.h"
 #include "player_api.h"
@@ -88,6 +89,14 @@ void RunHttpServer() {
             HttpRequest req = ParseRequest(std::string(buf, n));
             json rsp; int code = 200;
 
+            // AIMP_POCKET_BEGIN
+            if (req.method == "GET" &&
+                (req.path == "/" || req.path == "/index.html" || req.path == "/pocket")) {
+                SendPocketPage(cl);
+                closesocket(cl);
+                continue;
+            }
+            // AIMP_POCKET_END
             if (req.method == "OPTIONS") {
                 std::string cors = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, PUT, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nContent-Length: 0\r\n\r\n";
                 send(cl, cors.c_str(), (int)cors.size(), 0);

@@ -1,0 +1,49 @@
+name: AIMP Pocket Windows
+on:
+  push:
+    branches: [pocket-mobile]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify unchanged API and embed mobile UI
+        run: |
+          node tests/api-preservation.cjs
+          node tools/embed-web.cjs
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-i686-gcc
+      - name: Build Windows x64 and x86 DLLs and HTTP test hosts
+        shell: msys2 {0}
+        run: bash tools/build-windows.sh
+      - name: Compare original and integrated HTTP server behavior
+        run: node tests/http-parity.cjs
+      - name: Verify DLLs and package
+        run: |
+          node tests/verify-pe.cjs
+          ./tools/package.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AIMP-Pocket-Windows
+          if-no-files-found: error
+          path: |
+            build/AimpHttpControl.aimppack
+            build/AimpHttpControl32.dll
+            build/AimpHttpControl64.dll
+            build/verification.json
+            build/http-parity.json
+            build/SHA256SUMS.txt
+            build/pe32.txt
+            build/pe64.txt
