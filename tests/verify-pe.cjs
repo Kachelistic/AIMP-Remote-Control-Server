@@ -7,7 +7,7 @@ for(const [bits,machine] of [[32,0x14c],[64,0x8664]]){
  assert.equal(b.toString('ascii',0,2),'MZ');assert.equal(b.readUInt32LE(pe),0x4550);
  assert.equal(b.readUInt16LE(pe+4),machine);assert(b.readUInt16LE(pe+22)&0x2000,'DLL flag');
  assert(b.includes(Buffer.from('AIMPPluginGetHeader')),'AIMP entry point present');
- assert(b.includes(Buffer.from('AIMP POCKET'))||b.includes(Buffer.from('AIMP <b>POCKET')),'Embedded UI');
+ assert(!b.includes(Buffer.from('AIMP <b>POCKET')),'UI must not be embedded');
  const report=fs.readFileSync('build/pe'+bits+'.txt','utf8');
  assert(/\bAIMPPluginGetHeader\b/.test(report));
  const imports=[...report.matchAll(/DLL Name:\s*(\S+)/g)].map(x=>x[1]);

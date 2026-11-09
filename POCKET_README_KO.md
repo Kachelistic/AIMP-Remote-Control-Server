@@ -16,7 +16,19 @@ SLV Tech AIMP HTTP Remote Control Server의 모바일 웹 UI 통합본입니다.
 플레이리스트 선택과 곡 재생을 지원합니다. 검색은 불러온 곡 범위에 적용되며
 '더 불러오기'로 목록을 추가할 수 있습니다. 별도 웹서버와 CDN은 필요 없습니다.
 
-## 호환성
+## HTML 수정
+
+설치된 AimpHttpControl.dll과 같은 폴더 안의 `web/pocket.html`을 UTF-8로
+수정·저장한 뒤 휴대폰 브라우저를 새로고침하면 바로 반영됩니다.
+AIMP 재시작이나 DLL 재빌드는 필요 없습니다. CSS와 JavaScript도 이 HTML 안에 있습니다.
+예: `AIMP/Plugins/AimpHttpControl/web/pocket.html`.
+DLL이 x64 하위 폴더에서 로드되는 설치 형태라면 그 폴더의 `web/pocket.html`을 사용합니다.
+파일이 없거나 읽을 수 없거나 비어 있거나 4 MiB를 넘으면 HTTP 404 오류가 표시됩니다.
+`.aimppack`에는 두 아키텍처용 폴더에 HTML을 각각 포함합니다.
+플러그인을 재설치·업데이트하기 전에는 수정한 HTML을 별도로 백업하세요.
+추가 파일을 제공하는 일반 웹서버 기능은 없으므로 CSS/JS는 HTML 안에 유지합니다.
+
+## API 호환성
 
 추가 경로는 GET /, GET /index.html, GET /pocket입니다.
 기존 HTTP GET/POST/PUT/OPTIONS, JSON 응답, CORS, IP 허용 목록,
@@ -34,5 +46,5 @@ API 소스 보존 검사, 원본/통합 HTTP 서버 실행 비교, PE 아키텍�
 HTTP 서버 비교는 AIMP 코어가 없는 테스트 호스트에서 수행합니다.
 이 검사는 실제 AIMP에서 재생 및 설치 검증을 대신하지 않습니다.
 
-UI 변경 시 `node tools/embed-web.cjs`를 실행하여 임베디드 헤더를 갱신합니다.
+HTML은 독립 파일이므로 변경 시 DLL을 다시 빌드할 필요가 없습니다.
 DLL 빌드는 `bash tools/build-windows.sh`, 패키지는 `./tools/package.ps1`입니다.

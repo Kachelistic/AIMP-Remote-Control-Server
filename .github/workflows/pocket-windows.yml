@@ -16,10 +16,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify unchanged API and embed mobile UI
+      - name: Verify unchanged API and mobile UI
         run: |
           node tests/api-preservation.cjs
-          node tools/embed-web.cjs
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64

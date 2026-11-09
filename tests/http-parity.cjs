@@ -36,12 +36,30 @@ function request(port,path,method='GET',body=''){
    assert.deepEqual(b,a,args.join(' '));
   }
   const html=fs.readFileSync('web/pocket.html','utf8');
+  fs.mkdirSync('build/web',{recursive:true});
+  fs.writeFileSync('build/web/pocket.html',html,'utf8');
   for(const path of ['/','/index.html','/pocket','/pocket?from=home']){
    const r=await request(29124,path);assert.equal(r.status,200);assert.equal(r.body,html);
    assert.equal(Number(r.headers['content-length']),Buffer.byteLength(html));
    assert.equal(r.headers['content-type'],'text/html; charset=utf-8');
   }
-  const result={passed:true,apiCases:cases.length,webCases:4,scope:'Actual original and modified Windows HTTP server, AIMP core absent. Source preservation independently checked; real AIMP playback not exercised.'};
+  fs.mkdirSync('build/web',{recursive:true});
+  const external='build/web/pocket.html';
+  for(const body of ['<!doctype html><title>외부 화면 A</title>','<!doctype html><title>수정한 화면 B</title>']){
+   fs.writeFileSync(external,body,'utf8');
+   const r=await request(29124,'/pocket');
+   assert.equal(r.body,body,'External edits appear without restarting the server');
+   assert.equal(Number(r.headers['content-length']),Buffer.byteLength(body));
+   assert.equal(r.headers['cache-control'],'no-store');
+  }
+  fs.writeFileSync(external,'');
+  assert.equal((await request(29124,'/')).status,404,'Empty file returns error');
+  fs.writeFileSync(external,Buffer.alloc(4*1024*1024+1,65));
+  assert.equal((await request(29124,'/')).status,404,'Oversized file returns error');
+  fs.unlinkSync(external);
+  assert.equal((await request(29124,'/')).status,404,'Missing file returns error');
+  assert.equal((await request(29124,'/web/pocket.html')).status,404,'No general file server is exposed');
+  const result={passed:true,apiCases:cases.length,webCases:4,externalHtmlCases:6,scope:'Actual original and modified Windows HTTP server, AIMP core absent. Source preservation independently checked; real AIMP playback not exercised.'};
   fs.writeFileSync('build/http-parity.json',JSON.stringify(result,null,2));console.log(result);
  }finally{original.kill();pocket.kill()}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $stage = Join-Path $PSScriptRoot '../build/package/AimpHttpControl'
-New-Item -ItemType Directory -Force -Path "$stage/x64/Langs", "$stage/Langs" | Out-Null
+New-Item -ItemType Directory -Force -Path "$stage/x64/Langs", "$stage/Langs", "$stage/web", "$stage/x64/web" | Out-Null
+Copy-Item web/pocket.html "$stage/web/pocket.html"
+Copy-Item web/pocket.html "$stage/x64/web/pocket.html"
 Copy-Item build/AimpHttpControl32.dll "$stage/AimpHttpControl.dll"
 Copy-Item build/AimpHttpControl64.dll "$stage/x64/AimpHttpControl.dll"
 Copy-Item LICENSE "$stage/LICENSE.txt"
@@ -16,7 +18,7 @@ Move-Item -LiteralPath build/AimpHttpControl.zip -Destination build/AimpHttpCont
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path build/AimpHttpControl.aimppack))
 try {
- foreach ($name in @('AimpHttpControl/AimpHttpControl.dll','AimpHttpControl/x64/AimpHttpControl.dll','AimpHttpControl/Langs/english.lng','AimpHttpControl/x64/Langs/russian.lng')) {
+ foreach ($name in @('AimpHttpControl/AimpHttpControl.dll','AimpHttpControl/x64/AimpHttpControl.dll','AimpHttpControl/Langs/english.lng','AimpHttpControl/x64/Langs/russian.lng','AimpHttpControl/web/pocket.html','AimpHttpControl/x64/web/pocket.html')) {
   if (-not ($archive.Entries | Where-Object { $_.FullName.Replace('\','/') -eq $name })) { throw "Missing package entry: $name" }
  }
 } finally { $archive.Dispose() }
